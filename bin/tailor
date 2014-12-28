@@ -1,0 +1,119 @@
+#!/usr/bin/env ruby
+
+require 'json'
+require 'optparse'
+require 'ostruct'
+require 'colorize'
+require 'net/ssh'
+require 'parallel'
+require 'recursive-open-struct'
+
+TAILOR_DIR = File.expand_path('~/.tailor')
+SSH_CONFIG = File.expand_path('~/.ssh/config')
+
+options = {
+  list: false
+}
+
+OptionParser
+  .new("Usage: #{File.basename($0)} [options] [config]")
+  .on('-l', '--list', 'List available environments') { |v| options[:list] = v }
+  .parse!(ARGV)
+
+#
+# list envs
+#
+if options[:list]
+  exit 0 unless Dir.exists?(TAILOR_DIR)
+
+  Dir::entries(TAILOR_DIR).each do |filename|
+    next if filename =~ /^\./
+
+    puts File.basename(filename, File.extname(filename))
+  end
+  exit 0
+end
+
+# global config
+cpath = File.join(TAILOR_DIR, 'default.json')
+
+arg = ARGV.first
+if arg and not File.extname(arg).empty?
+  # file path
+  cpath = File.join(Dir.pwd, arg)
+elsif arg
+  # conf name
+  cpath = File.join(TAILOR_DIR, arg + '.json')
+end
+
+#
+# read config
+#
+unless File.exists?(cpath)
+  STDERR.puts("[ERROR] File not found: #{cpath}".red)
+  exit 1
+end
+
+begin
+  config = JSON.parse(File.open(cpath).read).map{ |c| RecursiveOpenStruct.new(c) }
+rescue => e
+  STDERR.puts(e)
+  exit 1
+end
+
+#
+# check config syntax
+#
+unless config.instance_of?(Array)
+  STDERR.puts('[ERROR] Config must be an array')
+  exit 1
+end
+
+invalids = config.select{ |conf| conf['host'].nil? or conf['path'].nil? }
+
+unless invalids.empty?
+  STDERR.puts('[ERROR] Following config do not have required fields `host` and `path`')
+  STDERR.puts(JSON.pretty_generate(invalids))
+  exit 1
+end
+
+#
+# tail logs
+#
+begin
+  queue = Queue.new
+
+  Thread.start do 
+    while message = queue.pop
+      if message.is_a?(Exception)
+        STDERR.puts(message.inspect.red)
+      elsif message.is_a?(String)
+        STDOUT.puts(message)
+      else 
+        STDOUT.puts(message.inspect)
+      end
+    end
+  end
+
+  begin
+    Parallel.each(config, in_threads: config.length) do |conf|
+      ssh_conf = RecursiveOpenStruct.new(Net::SSH::Config.load(SSH_CONFIG, conf.host))
+      color = (conf.options.label.color || 'default').to_sym
+      chost = conf.host.colorize(color)
+
+      Net::SSH.start(ssh_conf.host, ssh_conf.user, keys: ssh_conf.identityfile) do |ssh|
+        ssh.open_channel do |channel|
+          channel.on_data do |ch, data|
+            data.lines.each do |line|
+              queue.push("[#{chost}] #{line}")
+            end
+          end
+
+          channel.exec("tailf #{conf.path}")
+        end
+      end
+    end
+  end
+rescue Interrupt
+  # do nothing
+end

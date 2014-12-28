@@ -1,0 +1,21 @@
+[
+  {
+    "host": "host1.yourdomain",
+    "path": "/var/log/nginx/access.log",
+    "options": {
+      "label": { 
+        "color": "green" 
+      }
+    }
+  },
+  {
+    "host": "host2.yourdomain",
+    "path": "/var/log/nginx/access.log",
+    "options": {
+      "label": {
+        "color": "cyan" 
+      }
+    }
+  }
+]
+
