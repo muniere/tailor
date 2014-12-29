@@ -1,12 +1,6 @@
 #!/usr/bin/env ruby
 
-require 'json'
 require 'optparse'
-require 'ostruct'
-require 'colorize'
-require 'net/ssh'
-require 'parallel'
-require 'recursive-open-struct'
 
 TAILOR_DIR = File.expand_path('~/.tailor')
 SSH_CONFIG = File.expand_path('~/.ssh/config')
@@ -49,11 +43,14 @@ end
 #
 # read config
 #
+require 'colorize'
 unless File.exists?(cpath)
   STDERR.puts("[ERROR] File not found: #{cpath}".red)
   exit 1
 end
 
+require 'json'
+require 'recursive-open-struct'
 begin
   config = JSON.parse(File.open(cpath).read).map{ |c| RecursiveOpenStruct.new(c) }
 rescue => e
@@ -80,6 +77,8 @@ end
 #
 # tail logs
 #
+require 'net/ssh'
+require 'parallel'
 begin
   queue = Queue.new
 
