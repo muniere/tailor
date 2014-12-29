@@ -92,12 +92,12 @@ begin
     end
   end
 
-  begin
-    Parallel.each(config, in_threads: config.length) do |conf|
-      ssh_conf = RecursiveOpenStruct.new(Net::SSH::Config.load(SSH_CONFIG, conf.host))
-      color = (conf.options.label.color || 'default').to_sym
-      chost = conf.host.colorize(color)
+  Parallel.each(config, in_threads: config.length) do |conf|
+    ssh_conf = RecursiveOpenStruct.new(Net::SSH::Config.load(SSH_CONFIG, conf.host))
+    color = (conf.options.label.color || 'default').to_sym
+    chost = conf.host.colorize(color)
 
+    begin
       Net::SSH.start(ssh_conf.host, ssh_conf.user, keys: ssh_conf.identityfile) do |ssh|
         ssh.open_channel do |channel|
           channel.on_data do |ch, data|
@@ -109,8 +109,11 @@ begin
           channel.exec("tailf #{conf.path}")
         end
       end
+    rescue => e
+      STDERR.puts(e.inspect.red)
     end
   end
+
 rescue Interrupt
   # do nothing
 end
