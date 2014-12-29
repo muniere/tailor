@@ -6,12 +6,26 @@ require 'open3'
 VERBOSE = true
 NOOP = false
 
-SRC_DIR = File.join(Dir.pwd, 'bin')
-DST_DIR = File.expand_path('~/.bin')
-LOCK_FILE = 'PREFIX.lock'
-
-EXAMPLE_DIR = File.join(Dir.pwd, 'example')
-TAILOR_DIR = File.expand_path('~/.tailor')
+MAPPINGS = {
+  :bin => { 
+    :src => File.join(Dir.pwd, 'bin'),
+    :dst => File.expand_path('~/.bin')
+  },
+  :bash => {
+    :src => File.join(Dir.pwd, 'completion/tailor.bash'),
+    :dst => File.expand_path('~/.bash_completion.d/tailor')
+  },
+  :zsh => {
+    :src => File.join(Dir.pwd, 'completion/tailor.zsh'),
+    :dst => File.expand_path('~/.zsh-completions/_tailor')
+  },
+  :preset => {
+    :src => File.join(Dir.pwd, 'example'),
+    :dst => File.expand_path('~/.tailor'),
+    :link => false
+  }
+}
+LOCK_FILE = File.join(Dir.pwd, 'PREFIX.lock')
 
 #
 # Extended String
@@ -24,6 +38,15 @@ class String
   def magenta; "\033[35m#{self}\033[0m"; end
   def cyan;    "\033[36m#{self}\033[0m"; end
   def gray;    "\033[37m#{self}\033[0m"; end
+end
+
+#
+# Extended Hash
+#
+class Hash
+  def pick(*keys)
+    keys.each_with_object(self.class.new) { |k, hash| hash[k] = self[k] if self.has_key?(k) }
+  end
 end
 
 #
@@ -81,9 +104,16 @@ class Helper
   end
 
   #
+  # remove file recursively
+  #
+  def self.rm_r(file)
+    return self.exec("rm -r #{file}")
+  end
+
+  #
   # create symlink recursively
   #
-  def self.symlink_r(src, dst)
+  def self.symlink_r(src: nil, dst: nil)
 
     if !File.exists?(src)
       self.warn("File NOT FOUND: #{src}")
@@ -99,13 +129,29 @@ class Helper
       self.mkdir_p(dir)
     end
 
-    return self.ln_sf(src, dst)
+    # file
+    if File.file?(src) 
+      return self.ln_sf(src, dst)
+    end
+
+    # directory
+    if !File.directory?(dst)
+      self.mkdir_p(dst) 
+    end
+
+    success = true
+
+    self.lsdir(src).each do |conf|
+      success &= self.symlink_r(src: File.join(src, conf), dst: File.join(dst, conf))
+    end
+
+    return success
   end
 
   #
   # copy file recursively
   #
-  def self.cp_r(src, dst)
+  def self.copy_r(src: nil, dst: nil)
 
     if !File.exists?(src)
       self.warn("File NOT FOUND: #{src}")
@@ -121,26 +167,62 @@ class Helper
       self.mkdir_p(dir)
     end
 
-    return self.cp(src, dst)
-  end
+    # file
+    if File.file?(src) 
+      return self.cp(src, dst)
+    end
 
+    # directory
+    if !File.directory?(dst)
+      self.mkdir_p(dst) 
+    end
+
+    success = true
+
+    self.lsdir(src).each do |conf|
+      success &= self.cp(File.join(src, conf), File.join(dst, conf))
+    end
+
+    return success
+  end
 
   #
   # unlink file
   #
-  def self.unlink(target)
+  def self.unlink_r(src: nil, dst: nil)
 
-    if !File.exists?(target) and !File.symlink?(target)
-      self.info("File already removed: #{target}")
+    if !File.exists?(dst) and !File.symlink?(dst)
+      self.info("File already removed: #{dst}")
       return true
     end
 
-    if !File.symlink?(target)
-      self.warn("File is NOT LINK: #{target}")
+    # symlink
+    if File.symlink?(dst) and File.exists?(src)
+      return self.rm(dst)
+    end
+
+    # file
+    if File.file?(dst)
+      self.info("File is NOT LINK: #{dst}")
       return false
     end
 
-    return self.rm(target)
+    # directory
+    success = true
+
+    self.lsdir(src).each do |file|
+      if !File.symlink?(path = File.join(dst, file))
+        next
+      end
+
+      success &= self.rm(path)
+    end
+
+    if self.lsdir(dst).empty?
+      success &= self.rm_r(dst)
+    end
+
+    return success
   end
 
   #
@@ -174,52 +256,31 @@ end
 #
 desc 'install'
 task :install do
-  src_d = SRC_DIR
-  dst_d = DST_DIR
-
-  if !ENV['PREFIX'].nil?
-    dst_d = ENV['PREFIX']
-    File.write(LOCK_FILE, ENV['PREFIX'])
+  if !(prefix = ENV['PREFIX']).nil?
+    MAPPINGS[:bin][:dst] = prefix
+    File.write(LOCK_FILE, prefix)
   end
 
-  # bin
   Helper.bundle
 
-  Helper.lsdir(src_d).each do |bin|
-    Helper.symlink_r(File.join(src_d, bin), File.join(dst_d, bin))
-  end
-
-  # completion
-  Helper.symlink_r(
-    File.join(Dir.pwd, 'completion/tailor.bash'),
-    File.expand_path('~/.bash_completion.d/tailor'))
-  Helper.symlink_r(
-    File.join(Dir.pwd, 'completion/tailor.zsh'),
-    File.expand_path('~/.zsh-completions/_tailor'))
-
-  # conf
-  Helper.lsdir(EXAMPLE_DIR).each do |conf|
-    Helper.cp_r(File.join(EXAMPLE_DIR, conf), File.join(TAILOR_DIR, conf))
+  MAPPINGS.each do |id, conf|
+    if conf[:link] == false
+      Helper.copy_r(conf.pick(:src, :dst))
+    else
+      Helper.symlink_r(conf.pick(:src, :dst))
+    end
   end
 end
 
 desc 'uninstall'
 task :uninstall do
-  src_d = SRC_DIR
-  dst_d = DST_DIR
-
   if File.exists?(LOCK_FILE)
-    dst_d = File.read(LOCK_FILE)
+    MAPPINGS[:bin][:dst] = File.read(LOCK_FILE)
   end
 
-  # bin
-  Helper.lsdir(src_d).each do |bin|
-    Helper.unlink(File.join(dst_d, bin))
+  MAPPINGS.each do |id, conf|
+    Helper.unlink_r(conf.pick(:src, :dst))
   end
-
-  # completion
-  Helper.unlink(File.expand_path('~/.bash_completion.d/tailor'))
-  Helper.unlink(File.expand_path('~/.zsh-completions/_tailor'))
 end
 
 desc 'show status'
