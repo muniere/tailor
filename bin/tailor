@@ -27,16 +27,19 @@ if options.list
   exit 0
 end
 
-# global config
-cpath = File.join(TAILOR_DIR, 'default.json')
+#
+# detect config path
+#
 
-arg = ARGV.first
-if arg and not File.extname(arg).empty?
+if !(arg = ARGV.first).nil? and !File.extname(arg).empty?
   # file path
   cpath = File.join(Dir.pwd, arg)
-elsif arg
+elsif !arg.nil?
   # conf name
   cpath = File.join(TAILOR_DIR, arg + '.json')
+else
+  # default path
+  cpath = File.join(TAILOR_DIR, 'default.json')
 end
 
 #
