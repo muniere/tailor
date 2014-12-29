@@ -19,13 +19,11 @@ OptionParser
 # list envs
 #
 if options.list
-  exit 0 unless Dir.exists?(TAILOR_DIR)
-
-  Dir::entries(TAILOR_DIR).each do |filename|
-    next if filename =~ /^\./
-
-    puts File.basename(filename, File.extname(filename))
+  unless Dir.exists?(TAILOR_DIR)
+    exit 0
   end
+
+  STDOUT.puts Dir.entries(TAILOR_DIR).reject{ |e| e =~ /^\./ }.map{ |e| File.basename(e, '.*') }
   exit 0
 end
 
