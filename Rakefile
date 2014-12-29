@@ -60,6 +60,13 @@ class Helper
   end
 
   #
+  # create symlink forcely
+  #
+  def self.ln_sf(src, dst)
+    return self.exec("ln -sf #{src} #{dst}")
+  end
+
+  #
   # copy file
   #
   def self.cp(src, dst)
@@ -74,9 +81,9 @@ class Helper
   end
 
   #
-  # create symlink 
+  # create symlink recursively
   #
-  def self.symlink(src, dst)
+  def self.symlink_r(src, dst)
 
     if !File.exists?(src)
       self.warn("File NOT FOUND: #{src}")
@@ -88,7 +95,11 @@ class Helper
       return true
     end
 
-    return self.exec("ln -sf #{src} #{dst}")
+    if !Dir.exists?(dir = File.dirname(dst))
+      self.mkdir_p(dir)
+    end
+
+    return self.ln_sf(src, dst)
   end
 
   #
@@ -175,8 +186,16 @@ task :install do
   Helper.bundle
 
   Helper.lsdir(src_d).each do |bin|
-    Helper.symlink(File.join(src_d, bin), File.join(dst_d, bin))
+    Helper.symlink_r(File.join(src_d, bin), File.join(dst_d, bin))
   end
+
+  # completion
+  Helper.symlink_r(
+    File.join(Dir.pwd, 'completion/tailor.bash'),
+    File.expand_path('~/.bash_completion.d/tailor'))
+  Helper.symlink_r(
+    File.join(Dir.pwd, 'completion/tailor.zsh'),
+    File.expand_path('~/.zsh-completions/_tailor'))
 
   # conf
   Helper.lsdir(EXAMPLE_DIR).each do |conf|
@@ -193,9 +212,14 @@ task :uninstall do
     dst_d = File.read(LOCK_FILE)
   end
 
+  # bin
   Helper.lsdir(src_d).each do |bin|
     Helper.unlink(File.join(dst_d, bin))
   end
+
+  # completion
+  Helper.unlink(File.expand_path('~/.bash_completion.d/tailor'))
+  Helper.unlink(File.expand_path('~/.zsh-completions/_tailor'))
 end
 
 desc 'show status'

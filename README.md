@@ -34,17 +34,17 @@ $ tailor
 ## Usage
 
 ```bash
-# with default config
+# with default preset
 $ tailor
 
-# with specific config for env
+# with specific preset
 $ vim ~/.tailor/prd.json
 $ tailor prd
 
-# with specific cofig file
+# with specific preset file
 $ vim ~/dev.json
 $ tailor ~/dev.json
 
-# list available envs
+# list available presets
 $ tailor -l
 ```
