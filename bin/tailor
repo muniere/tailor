@@ -1,23 +1,24 @@
 #!/usr/bin/env ruby
 
+require 'ostruct'
 require 'optparse'
 
 TAILOR_DIR = File.expand_path('~/.tailor')
 SSH_CONFIG = File.expand_path('~/.ssh/config')
 
-options = {
+options = OpenStruct.new({
   list: false
-}
+})
 
 OptionParser
   .new("Usage: #{File.basename($0)} [options] [config]")
-  .on('-l', '--list', 'List available environments') { |v| options[:list] = v }
+  .on('-l', '--list', 'List available environments') { |v| options.list = v }
   .parse!(ARGV)
 
 #
 # list envs
 #
-if options[:list]
+if options.list
   exit 0 unless Dir.exists?(TAILOR_DIR)
 
   Dir::entries(TAILOR_DIR).each do |filename|
