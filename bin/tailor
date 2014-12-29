@@ -46,8 +46,7 @@ end
 #
 require 'colorize'
 unless File.exists?(cpath)
-  STDERR.puts("[ERROR] File not found: #{cpath}".red)
-  exit 1
+  abort "[ERROR] File not found: #{cpath}".red
 end
 
 require 'json'
@@ -55,24 +54,21 @@ require 'recursive-open-struct'
 begin
   config = JSON.parse(File.open(cpath).read).map{ |c| RecursiveOpenStruct.new(c) }
 rescue => e
-  STDERR.puts(e)
-  exit 1
+  abort e.inspect.red
 end
 
 #
 # check config syntax
 #
 unless config.instance_of?(Array)
-  STDERR.puts('[ERROR] Config must be an array')
-  exit 1
+  abort '[ERROR] Config must be an array'
 end
 
-invalids = config.select{ |conf| conf['host'].nil? or conf['path'].nil? }
-
-unless invalids.empty?
-  STDERR.puts('[ERROR] Following config do not have required fields `host` and `path`')
-  STDERR.puts(JSON.pretty_generate(invalids))
-  exit 1
+unless (invalids = config.select{ |conf| conf.host.nil? or conf.path.nil? }.map{ |conf| conf.to_h }).empty?
+  abort [
+    '[ERROR] Following config do not have required fields `host` and `path`',
+    JSON.pretty_generate(invalids)
+  ].join("\n").red
 end
 
 #
