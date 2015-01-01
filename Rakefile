@@ -18,11 +18,6 @@ MAPPINGS = {
   :zsh => {
     :src => File.join(Dir.pwd, 'completion/tailor.zsh'),
     :dst => File.expand_path('~/.zsh-completions/_tailor')
-  },
-  :preset => {
-    :src => File.join(Dir.pwd, 'example'),
-    :dst => File.expand_path('~/.tailor'),
-    :link => false
   }
 }
 LOCK_FILE = File.join(Dir.pwd, 'PREFIX.lock')
@@ -38,15 +33,6 @@ class String
   def magenta; "\033[35m#{self}\033[0m"; end
   def cyan;    "\033[36m#{self}\033[0m"; end
   def gray;    "\033[37m#{self}\033[0m"; end
-end
-
-#
-# Extended Hash
-#
-class Hash
-  def pick(*keys)
-    keys.each_with_object(self.class.new) { |k, hash| hash[k] = self[k] if self.has_key?(k) }
-  end
 end
 
 #
@@ -226,6 +212,30 @@ class Helper
   end
 
   #
+  # show status
+  #
+  def self.status_r(src: nil, dst: nil)
+
+    paths = []
+
+    if File.file?(dst) or File.symlink?(dst)
+      # file
+      paths.push(dst)
+    else
+      # directory
+      self.lsdir(src).each do |file|
+        path = File.join(dst, file)
+
+        if File.exists?(path) or File.symlink?(path)
+          paths.push(path)
+        end
+      end
+    end
+
+    return self.exec("ls -ldG #{paths.join(' ')}", verbose: true, noop: false)
+  end
+
+  #
   # install bundles
   #
   def self.bundle
@@ -263,12 +273,8 @@ task :install do
 
   Helper.bundle
 
-  MAPPINGS.each do |id, conf|
-    if conf[:link] == false
-      Helper.copy_r(conf.pick(:src, :dst))
-    else
-      Helper.symlink_r(conf.pick(:src, :dst))
-    end
+  MAPPINGS.each do |id, mapping|
+    Helper.symlink_r(mapping)
   end
 end
 
@@ -278,21 +284,18 @@ task :uninstall do
     MAPPINGS[:bin][:dst] = File.read(LOCK_FILE)
   end
 
-  MAPPINGS.each do |id, conf|
-    Helper.unlink_r(conf.pick(:src, :dst))
+  MAPPINGS.each do |id, mapping|
+    Helper.unlink_r(mapping)
   end
 end
 
 desc 'show status'
 task :status do
-  src_d = SRC_DIR
-  dst_d = DST_DIR
-
   if File.exists?(LOCK_FILE)
-    dst_d = File.read(LOCK_FILE)
+    MAPPINGS[:bin][:dst] = File.read(LOCK_FILE)
   end
 
-  if !(bins = (Helper.lsdir(src_d) & Helper.lsdir(dst_d)).map{ |bin| File.join(dst_d, bin) }).empty?
-    Helper.exec("ls -lFG #{bins.join(' ')}", verbose: false, noop: false)
+  MAPPINGS.each do |id, mapping|
+    Helper.status_r(mapping)
   end
 end

@@ -1,119 +1,140 @@
 #!/usr/bin/env ruby
 
+require 'thor'
 require 'ostruct'
-require 'optparse'
-
-TAILOR_DIR = File.expand_path('~/.tailor')
-SSH_CONFIG = File.expand_path('~/.ssh/config')
-
-options = OpenStruct.new({
-  list: false
-})
-
-OptionParser
-  .new("Usage: #{File.basename($0)} [options] [config]")
-  .on('-l', '--list', 'List available environments') { |v| options.list = v }
-  .parse!(ARGV)
-
-#
-# list envs
-#
-if options.list
-  unless Dir.exists?(TAILOR_DIR)
-    exit 0
-  end
-
-  STDOUT.puts Dir.entries(TAILOR_DIR).reject{ |e| e =~ /^\./ }.map{ |e| File.basename(e, '.*') }
-  exit 0
-end
-
-#
-# detect config path
-#
-
-if !(arg = ARGV.first).nil? and !File.extname(arg).empty?
-  # file path
-  cpath = File.join(Dir.pwd, arg)
-elsif !arg.nil?
-  # conf name
-  cpath = File.join(TAILOR_DIR, arg + '.json')
-else
-  # default path
-  cpath = File.join(TAILOR_DIR, 'default.json')
-end
-
-#
-# read config
-#
 require 'colorize'
-unless File.exists?(cpath)
-  abort "[ERROR] File not found: #{cpath}".red
-end
+require 'awesome_print'
 
-require 'json'
-require 'recursive-open-struct'
-begin
-  config = JSON.parse(File.open(cpath).read).map{ |c| RecursiveOpenStruct.new(c) }
-rescue => e
-  abort e.inspect.red
-end
+require_relative '../lib/tailor'
 
-#
-# check config syntax
-#
-unless config.instance_of?(Array)
-  abort '[ERROR] Config must be an array'
-end
+class CLI < Thor
+  
+  #
+  # start
+  #
 
-unless (invalids = config.select{ |conf| conf.host.nil? or conf.path.nil? }.map{ |conf| conf.to_h }).empty?
-  abort [
-    '[ERROR] Following config do not have required fields `host` and `path`',
-    JSON.pretty_generate(invalids)
-  ].join("\n").red
-end
+  desc 'start <project>', 'start to tail logs'
+  def start(name='default')
 
-#
-# tail logs
-#
-require 'net/ssh'
-require 'parallel'
-begin
-  queue = Queue.new
+    # load
+    project = Tailor::Project.load(name).validate
 
-  Thread.start do 
-    while message = queue.pop
-      if message.is_a?(Exception)
-        STDERR.puts(message.inspect.red)
-      elsif message.is_a?(String)
-        STDOUT.puts(message)
-      else 
-        STDOUT.puts(message.inspect)
+    # message(main)
+    queue = Queue.new
+
+    Thread.start do 
+      while message = queue.pop
+        if message.is_a?(Exception)
+          STDERR.puts(message.inspect.red)
+        elsif message.is_a?(String)
+          STDOUT.puts(message)
+        else 
+          STDOUT.puts(message.inspect)
+        end
       end
     end
-  end
 
-  Parallel.each(config, in_threads: config.length) do |conf|
-    ssh_conf = RecursiveOpenStruct.new(Net::SSH::Config.load(SSH_CONFIG, conf.host))
-    color = (conf.options.label.color || 'default').to_sym
-    chost = conf.host.colorize(color)
+    # tail
+
+    clients = project.servers.map{ |server| 
+      Tailor::Client.new(path: project.path, server: server, queue: queue) 
+    }
 
     begin
-      Net::SSH.start(ssh_conf.host, ssh_conf.user, keys: ssh_conf.identityfile) do |ssh|
-        ssh.open_channel do |channel|
-          channel.on_data do |ch, data|
-            data.lines.each do |line|
-              queue.push("[#{chost}] #{line}")
-            end
-          end
-
-          channel.exec("tailf #{conf.path}")
-        end
+      Parallel.each(clients, in_threads: clients.length) do |client|
+        client.start
       end
     rescue => e
       STDERR.puts(e.inspect.red)
     end
+
+  rescue Interrupt
+    # do nothing
   end
 
-rescue Interrupt
-  # do nothing
+  desc 'exec <project>', 'alias of :start'
+  def exec(*args)
+    self.invoke(:start, *args)
+  end
+
+  #
+  # create
+  #
+
+  desc 'create <project>', 'create a new project'
+  def create(name)
+    Tailor::Project.create(name)
+    Tailor::Project.edit(name)
+  end
+
+  desc 'new <project>', 'alias of :create'
+  def new(*args)
+    self.invoke(:create, *args)
+  end
+
+  #
+  # edit
+  #
+
+  desc 'edit <project>', 'edit a project'
+  def edit(name)
+    Tailor::Project.edit(name)
+  end
+
+  #
+  # delete
+  #
+
+  desc 'delete <project>', 'delete a project'
+  def delete(name)
+    Tailor::Project.delete(name)
+  end
+
+  desc 'rm <project>', 'alias of :delete'
+  def rm(*args)
+    self.invoke(:delete, *args)
+  end
+
+  #
+  # list
+  #
+
+  desc 'list', 'list projects'
+  def list
+    puts Tailor::Project.list
+  end
+
+  desc 'ls', 'alias of :list'
+  def ls
+    self.invoke(:list)
+  end
+
+  #
+  # completion
+  #
+
+  desc 'complete', 'list completions'
+  option :bash, :type => :boolean, :default => false
+  option :zsh , :type => :boolean, :default => false
+  def complete(*args)
+    opts = OpenStruct.new(options)
+
+    if args.empty?
+      self.class.commands.each do |name, cmd|
+        next if name == 'complete'
+        if opts.zsh
+          puts "#{name}:#{cmd.description}"
+        else
+          puts "#{name}"
+        end
+      end
+      return
+    end
+
+    if ['start', 'exec', 'edit', 'delete', 'rm'].include?(args.first)
+      puts Project.list
+    end
+  end
 end
+
+CLI.start

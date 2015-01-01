@@ -8,6 +8,7 @@ Execute `tail -f` in multiple servers and output with labels.
 
 - [Ruby](https://www.ruby-lang.org/) >= 2.1.0
 - [Rake](http://docs.seattlerb.org/rake/) >= 10.0.0
+- [Bundler](http://bundler.io/) >= 1.7.0
 
 ## Get started
 
@@ -18,33 +19,18 @@ $ git clone git@github.com:muniere/tailor.git
 # install
 $ rake install
 
-# uninstall
-$ rake uninstall
+# define a new project
+$ tailor new my-project
 
-# status
-$ rake status
+# start to tail logs with project
+$ tailor start my-project
 
-# configure
-$ vim ~/.tailor/default.json
+# edit a project
+$ tailor edit my-project
 
-# execute
-$ tailor
-```
+# delete a project
+$ tailor delete my-project
 
-## Usage
-
-```bash
-# with default preset
-$ tailor
-
-# with specific preset
-$ vim ~/.tailor/prd.json
-$ tailor prd
-
-# with specific preset file
-$ vim ~/dev.json
-$ tailor ~/dev.json
-
-# list available presets
-$ tailor -l
+# list defined projects
+$ tailor list
 ```

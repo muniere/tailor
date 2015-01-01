@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 
 _tailor() {
+  local options curword
+
   if [ $COMP_CWORD == 1 ]; then
-    COMPREPLY=($(compgen -W "$(tailor -l)" ${COMP_WORDS[COMP_CWORD]})) 
-    return 0
+    options="$(tailor complete --bash)"
+  else
+    options="$(tailor complete --bash ${COMP_WORDS[((COMP_CWORD - 1))]})"
   fi
 
-  return 1
+  [ -z "$options" ] && return 1
+
+  COMPREPLY=($(compgen -W "$options" ${COMP_WORDS[COMP_CWORD]}))
+  return 0
 }
 
 complete -F _tailor tailor

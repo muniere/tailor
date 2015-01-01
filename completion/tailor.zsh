@@ -1,18 +1,22 @@
 #compdef tailor
 
-local curcontext=$curcontext state line
+local -a options
 
-declare presets
+if (( CURRENT == 2 )); then
+  # options
+  IFS=$'\n' options=($(tailor complete --zsh))
 
-presets=($(tailor -l))
+  # describe
+  _describe -t subcommands 'subcommands' options && return 0
+else
+  # options
+  IFS=$'\n' options=($(tailor complete --zsh ${words[((CURRENT - 1))]}))
 
-_presets() {
-    _describe -t presets "presets" presets
-}
+  # guard
+  [ -z "$options" ] && return 1
 
-_arguments -w -S -C \
-  {-h,--help}'[show this help message]: :->noargs' \
-  {-l,--list}'[print list of available environments]: :->noargs' \
-  '*:presets:_presets'
+  # describe
+  _describe -t projects 'projects' options && return 0
+fi
 
 # vim: ft=zsh sw=2 ts=2 sts=2
